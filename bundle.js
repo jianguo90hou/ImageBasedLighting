@@ -27,7 +27,9 @@ var specularMixSlider = document.getElementById('specularMixSlider')
 var images = [ 'assets/location_4_1_diffuse_c00.jpg', 'assets/location_4_1_diffuse_c02.jpg', 'assets/location_4_1_diffuse_c04.jpg',
                'assets/location_4_1_diffuse_c01.jpg', 'assets/location_4_1_diffuse_c03.jpg', 'assets/location_4_1_diffuse_c05.jpg',
                'assets/location_4_1_specular_c00.jpg', 'assets/location_4_1_specular_c02.jpg', 'assets/location_4_1_specular_c04.jpg',
-               'assets/location_4_1_specular_c01.jpg', 'assets/location_4_1_specular_c03.jpg', 'assets/location_4_1_specular_c05.jpg' ]
+               'assets/location_4_1_specular_c01.jpg', 'assets/location_4_1_specular_c03.jpg', 'assets/location_4_1_specular_c05.jpg',
+               'assets/location_4_1_reflection_c00.jpg', 'assets/location_4_1_reflection_c02.jpg', 'assets/location_4_1_reflection_c04.jpg',
+               'assets/location_4_1_reflection_c01.jpg', 'assets/location_4_1_reflection_c03.jpg', 'assets/location_4_1_reflection_c05.jpg' ]
 asyncImageLoad(images, onImages)
 
 // Canvas & WebGL setup
@@ -42,7 +44,7 @@ var norms = normals.vertexNormals(teapot.cells, teapot.positions)
 var model = Geom(gl).attr('MCVertex', teapot.positions).attr('MCNormal', norms).faces(teapot.cells)
 
 // Environment mapping shader
-var shader = glShader(gl, "precision mediump float;\n#define GLSLIFY 1\n\nattribute vec4 MCVertex;\n\nattribute vec3 MCNormal;\n\nuniform mat4 MVMatrix;\n\nuniform mat4 MVPMatrix;\n\nuniform mat3 NormalMatrix;\n\nvarying vec3 ReflectDir;\n\nvarying vec3 Normal;\n\nvoid main() {    \n\n    gl_Position = MVPMatrix * MCVertex;\n\n    Normal = normalize(NormalMatrix * MCNormal);\n\n    vec3 eyeDir = vec3(MVMatrix * MCVertex);\n\n    ReflectDir = reflect(eyeDir, Normal);\n\n}\n\n", "precision mediump float;\n#define GLSLIFY 1\n\nuniform vec3 BaseColor;\n\nuniform float SpecularPercent;\n\nuniform float DiffusePercent;\n\nuniform samplerCube SpecularEnvMap;\n\nuniform samplerCube DiffuseEnvMap;\n\nvarying vec3 ReflectDir;\n\nvarying vec3 Normal;\n\nvoid main() {\n\n    // Look up environment map values in convoluted cube maps\r\n    vec3 diffuseColor = vec3(textureCube(DiffuseEnvMap, normalize(Normal)));\n\n    vec3 specularColor = vec3(textureCube(SpecularEnvMap, normalize(ReflectDir)));\n\n    \n\n    // Add lighting to base color and mix\r\n    vec3 color = mix(BaseColor, diffuseColor*BaseColor, DiffusePercent);\n\n    color = mix(color, specularColor + color, SpecularPercent);\n\n    gl_FragColor = vec4(color, 1.0);\n\n}")
+var shader = glShader(gl, "precision mediump float;\n#define GLSLIFY 1\n\nattribute vec4 MCVertex;\n\nattribute vec3 MCNormal;\n\nuniform mat4 MVMatrix;\n\nuniform mat4 MVPMatrix;\n\nuniform mat3 NormalMatrix;\n\nvarying vec3 ReflectDir;\n\nvarying vec3 Normal;\n\nvoid main() {    \n\n    gl_Position = MVPMatrix * MCVertex;\n\n    Normal = normalize(NormalMatrix * MCNormal);\n\n    vec3 eyeDir = vec3(MVMatrix * MCVertex);\n\n    ReflectDir = reflect(eyeDir, Normal);\n\n}\n\n", "precision mediump float;\n#define GLSLIFY 1\n\nuniform vec3 BaseColor;\n\nuniform float ReflectionPercent;\n\nuniform float SpecularPercent;\n\nuniform float DiffusePercent;\n\nuniform samplerCube ReflectionEnvMap;\n\nuniform samplerCube SpecularEnvMap;\n\nuniform samplerCube DiffuseEnvMap;\n\nvarying vec3 ReflectDir;\n\nvarying vec3 Normal;\n\nvoid main() {\n\n    // Look up environment map values in convoluted cube maps\r\n    vec3 diffuseColor = vec3(textureCube(DiffuseEnvMap, normalize(Normal)));\n\n    vec3 specularColor = vec3(textureCube(SpecularEnvMap, normalize(ReflectDir)));\n\n    \n\n    // Get non-convoluted reflection\r\n    vec3 reflectionColor = vec3(textureCube(ReflectionEnvMap, normalize(ReflectDir)));\n\n    \n\n    // Add lighting to base color and mix\r\n    vec3 color = mix(BaseColor, diffuseColor*BaseColor, DiffusePercent);\n\n    color = mix(color, specularColor + color, SpecularPercent);\n\n    \n\n    // Mix with mirror-like reflection\r\n    color = mix(color, reflectionColor, ReflectionPercent);\n\n    gl_FragColor = vec4(color, 1.0);\n\n}")
 
 // Projection and camera setup
 var PMatrix = mat4.create()
@@ -50,7 +52,7 @@ var camera = turntableCamera()
 camera.downwards = Math.PI * 0.2
 
 // Cube map setup
-var diffuseMap, specularMap
+var diffuseMap, specularMap, reflectionMap
 function onImages (images) {
   var diffuseTextures = {
     pos: {
@@ -71,6 +73,16 @@ function onImages (images) {
     }
   }
   specularMap = TextureCube(gl, specularTextures)
+
+  var reflectionTextures = {
+    pos: {
+      x: images[12], y: images[13], z: images[14]
+    },
+    neg: {
+      x: images[15], y: images[16], z: images[17]
+    }
+  }
+  reflectionMap = TextureCube(gl, reflectionTextures)
 }
 
 // Main loop
@@ -84,8 +96,9 @@ function render () {
   // Process user input
   var diffuseMixRatio = diffuseMixSlider.value / 100
   var specularMixRatio = specularMixSlider.value / 100
+  var reflectionMixRatio = reflectionMixSlider.value / 100
 
-  if (!diffuseMap || !specularMap) {
+  if (!diffuseMap || !specularMap || !reflectionMap) {
     return
   }
 
@@ -104,11 +117,13 @@ function render () {
   shader.uniforms.MVMatrix = MVMatrix
   shader.uniforms.MVPMatrix = MVPMatrix
   shader.uniforms.NormalMatrix = computeNormalMatrix(MVMatrix)
-  shader.uniforms.BaseColor = vec3.fromValues(0.4, 0.4, 1.0)
+  shader.uniforms.BaseColor = vec3.fromValues(1.0, 1.0, 1.0)
   shader.uniforms.DiffusePercent = diffuseMixRatio
   shader.uniforms.SpecularPercent = specularMixRatio
+  shader.uniforms.ReflectionPercent = reflectionMixRatio
   shader.uniforms.DiffuseEnvMap = diffuseMap.bind(0)
   shader.uniforms.SpecularEnvMap = specularMap.bind(0)
+  shader.uniforms.ReflectionEnvMap = reflectionMap.bind(0)
   model.draw()
 }
 

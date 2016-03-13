@@ -26,7 +26,9 @@ var specularMixSlider = document.getElementById('specularMixSlider')
 var images = [ 'assets/location_4_1_diffuse_c00.jpg', 'assets/location_4_1_diffuse_c02.jpg', 'assets/location_4_1_diffuse_c04.jpg',
                'assets/location_4_1_diffuse_c01.jpg', 'assets/location_4_1_diffuse_c03.jpg', 'assets/location_4_1_diffuse_c05.jpg',
                'assets/location_4_1_specular_c00.jpg', 'assets/location_4_1_specular_c02.jpg', 'assets/location_4_1_specular_c04.jpg',
-               'assets/location_4_1_specular_c01.jpg', 'assets/location_4_1_specular_c03.jpg', 'assets/location_4_1_specular_c05.jpg' ]
+               'assets/location_4_1_specular_c01.jpg', 'assets/location_4_1_specular_c03.jpg', 'assets/location_4_1_specular_c05.jpg',
+               'assets/location_4_1_reflection_c00.jpg', 'assets/location_4_1_reflection_c02.jpg', 'assets/location_4_1_reflection_c04.jpg',
+               'assets/location_4_1_reflection_c01.jpg', 'assets/location_4_1_reflection_c03.jpg', 'assets/location_4_1_reflection_c05.jpg' ]
 asyncImageLoad(images, onImages)
 
 // Canvas & WebGL setup
@@ -49,7 +51,7 @@ var camera = turntableCamera()
 camera.downwards = Math.PI * 0.2
 
 // Cube map setup
-var diffuseMap, specularMap
+var diffuseMap, specularMap, reflectionMap
 function onImages (images) {
   var diffuseTextures = {
     pos: {
@@ -70,6 +72,16 @@ function onImages (images) {
     }
   }
   specularMap = TextureCube(gl, specularTextures)
+
+  var reflectionTextures = {
+    pos: {
+      x: images[12], y: images[13], z: images[14]
+    },
+    neg: {
+      x: images[15], y: images[16], z: images[17]
+    }
+  }
+  reflectionMap = TextureCube(gl, reflectionTextures)
 }
 
 // Main loop
@@ -83,8 +95,9 @@ function render () {
   // Process user input
   var diffuseMixRatio = diffuseMixSlider.value / 100
   var specularMixRatio = specularMixSlider.value / 100
+  var reflectionMixRatio = reflectionMixSlider.value / 100
 
-  if (!diffuseMap || !specularMap) {
+  if (!diffuseMap || !specularMap || !reflectionMap) {
     return
   }
 
@@ -103,11 +116,13 @@ function render () {
   shader.uniforms.MVMatrix = MVMatrix
   shader.uniforms.MVPMatrix = MVPMatrix
   shader.uniforms.NormalMatrix = computeNormalMatrix(MVMatrix)
-  shader.uniforms.BaseColor = vec3.fromValues(0.4, 0.4, 1.0)
+  shader.uniforms.BaseColor = vec3.fromValues(1.0, 1.0, 1.0)
   shader.uniforms.DiffusePercent = diffuseMixRatio
   shader.uniforms.SpecularPercent = specularMixRatio
+  shader.uniforms.ReflectionPercent = reflectionMixRatio
   shader.uniforms.DiffuseEnvMap = diffuseMap.bind(0)
   shader.uniforms.SpecularEnvMap = specularMap.bind(0)
+  shader.uniforms.ReflectionEnvMap = reflectionMap.bind(0)
   model.draw()
 }
 
